@@ -1,0 +1,29 @@
+{
+  "name": "oc-ping",
+  "version": "0.1.0",
+  "description": "OpenCode V2 iMessage notifications and permission/question replies powered by Photon.",
+  "keywords": ["opencode", "opencode-plugin", "imessage", "photon", "notifications"],
+  "author": "Ope Oginni",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpeOginni/oc-ping.git"
+  },
+  "homepage": "https://github.com/OpeOginni/oc-ping#readme",
+  "bugs": {
+    "url": "https://github.com/OpeOginni/oc-ping/issues"
+  },
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "files": ["src/index.ts", "src/protocol.ts", "README.md"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run check && npm test",
+    "publish:dry-run": "npm publish --dry-run",
+    "release": "npm publish"
+  },
+  "dependencies": { "@opencode/plugin": "0.0.0-beta-19378", "@opencode/client": "0.0.0-beta-19378", "spectrum-ts": "12.8.0" },
+  "devDependencies": { "@types/node": "^22", "typescript": "^5.9.0", "tsx": "^4" }
+}

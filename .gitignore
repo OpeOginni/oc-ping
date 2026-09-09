@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.tgz
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+opencode.jsonc

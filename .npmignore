@@ -1,0 +1,14 @@
+node_modules/
+test/
+coverage/
+.env
+.env.*
+.npmrc
+.opencode/
+opencode.json
+opencode.jsonc
+tsconfig.json
+*.tsbuildinfo
+*.log
+*.tgz
+.DS_Store

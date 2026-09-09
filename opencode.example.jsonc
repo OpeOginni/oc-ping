@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": ".",
+      "options": {
+        "recipient": "+15551234567",
+        "projectId": "your-photon-project-id",
+        "projectSecret": "your-photon-project-secret",
+        "deviceName": "Development Mac",
+        "events": ["result", "permission", "question"],
+        "replies": true
+      }
+    }
+  ]
+}
