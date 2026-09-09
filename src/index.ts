@@ -6,7 +6,7 @@ import { OpenCode, type OpenCodeEvent, type FormInfo } from '@opencode/client'
 import { Service } from '@opencode/client/service'
 import { Spectrum } from 'spectrum-ts'
 import { imessage } from 'spectrum-ts/providers/imessage'
-import { describeForm, formAnswer, parseReply, permissionReply } from './protocol.js'
+import { describeForm, formAnswer, parseReply, permissionReply, questionReplyHint } from './protocol.js'
 
 type Pending = { kind: 'permission' | 'question'; sessionID: string; requestID: string; expires: number; recipient: string }
 const defaults = ['result', 'permission', 'question']
@@ -71,7 +71,7 @@ export default Plugin.define({
       await client.session.get({ sessionID })
       return client.form
     }
-    const notifyRequest = async (kind: Pending['kind'], sessionID: string, requestID: string, body: string) => {
+    const notifyRequest = async (kind: Pending['kind'], sessionID: string, requestID: string, body: string, replyHint?: string) => {
       const marker = `request/${requestID}`
       if (await ctx.storage.get(marker)) return
       const code = randomBytes(4).toString('hex')
@@ -79,7 +79,7 @@ export default Plugin.define({
       await ctx.storage.set(`pending/${code}`, pending)
       const instructions = !replies ? 'Respond in OpenCode.' : kind === 'permission'
         ? `Reply: ${code} allow | ${code} always | ${code} deny\n(always saves approval according to OpenCode rules.)`
-        : `Reply: ${code} <answer>\nFor multiple fields: ${code} {"fieldKey":"answer"}\nCancel: ${code} /cancel`
+        : replyHint?.replaceAll('{code}', code) ?? `Reply: ${code} <answer>\nCancel: ${code} /cancel`
       await send(`${body}\n\n${instructions}`)
       await ctx.storage.set(marker, true)
     }
@@ -99,7 +99,7 @@ export default Plugin.define({
         await notifyRequest('permission', r.sessionID, r.id, `[${title}] Permission needed\n${r.action}\n${r.resources.join('\n')}${r.message ? `\n${r.message}` : ''}`)
       } else if (event.type === 'form.created') {
         const f = event.data.form
-        await notifyRequest('question', f.sessionID, f.id, `[${title}] Question\n${describeForm(f)}`)
+        await notifyRequest('question', f.sessionID, f.id, `OpenCode question\nSession: ${title}\n\n${describeForm(f)}`, questionReplyHint(f as FormInfo, '{code}'))
       } else if (event.type === 'session.idle' && session && events.has('result')) {
         if (session.outcome !== 'succeeded') return
         const messages = await ctx.session.context({ sessionID: session.id })

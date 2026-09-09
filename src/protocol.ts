@@ -35,16 +35,41 @@ export function formAnswer(form: FormInfo, text: string): FormAnswer {
       if (!text.trim() || !Number.isFinite(value) || (field.type === 'integer' && !Number.isInteger(value))) throw new Error('Reply with a valid number.')
       return { [field.key]: value }
     }
-    case 'multiselect': return { [field.key]: text.split(',').map(v => v.trim()).filter(Boolean) }
-    case 'string': return { [field.key]: text }
+    case 'multiselect': return { [field.key]: text.split(',').map(v => optionValue(field.options, v.trim())).filter(Boolean) }
+    case 'string': return { [field.key]: field.options?.length ? optionValue(field.options, text.trim()) : text }
   }
 }
 
+function optionValue(options: ReadonlyArray<{ value: string; label: string }>, answer: string): string {
+  const index = Number(answer)
+  if (/^\d+$/.test(answer) && index >= 1 && index <= options.length) return options[index - 1].value
+  const option = options.find(item => item.value.toLowerCase() === answer.toLowerCase() || item.label.toLowerCase() === answer.toLowerCase())
+  if (!option) throw new Error('Reply with a listed option number, value, or label.')
+  return option.value
+}
+
 export function describeForm(form: FormInfo): string {
-  return [form.title, ...form.fields.map(f => {
-    const options = 'options' in f ? f.options?.map(o => `${o.value}: ${o.label}`).join(', ') : undefined
-    return `${f.key} (${f.type}): ${f.title ?? ''}${f.description ? ` — ${f.description}` : ''}${options ? `\nChoices: ${options}` : ''}`
-  })].join('\n')
+  const multiple = form.fields.length > 1
+  const fields = form.fields.map((field, fieldIndex) => {
+    const heading = field.title?.trim() || (multiple ? field.key : '')
+    const lines = [multiple ? `${fieldIndex + 1}. ${heading} [${field.key}]` : heading, field.description?.trim()]
+      .filter((line): line is string => Boolean(line))
+    if ('options' in field && field.options?.length) {
+      lines.push(...field.options.map((option, optionIndex) => `${optionIndex + 1}. ${option.label}${option.description ? ` — ${option.description}` : ''}`))
+    }
+    return lines.join('\n')
+  })
+  return [form.title.trim(), ...fields].filter(Boolean).join('\n\n')
+}
+
+export function questionReplyHint(form: FormInfo, code: string): string {
+  if (form.fields.length > 1) return `Reply: ${code} {"fieldKey":"answer"}\nCancel: ${code} /cancel`
+  const field = form.fields[0]
+  if ('options' in field && field.options?.length) {
+    const example = field.type === 'multiselect' ? '1,3' : '1'
+    return `Reply: ${code} ${example}\nCancel: ${code} /cancel`
+  }
+  return `Reply: ${code} <answer>\nCancel: ${code} /cancel`
 }
 
 export function parseReply(text: string) {

@@ -71,6 +71,9 @@ does not override Photon transport fallback policy.
 
 Photon receives replies over the SDK's outbound gRPC connection. No public
 webhook or tunnel is needed. The machine running OpenCode must stay online.
+On Free and Pro shared-line plans, add your recipient under the Photon project's
+**Users** tab and send an initial iMessage from that recipient to the project's
+**Texts on** number before testing notifications.
 
 ## Notifications and replies
 
@@ -116,15 +119,17 @@ Reply: 8a21b0cd allow | 8a21b0cd always | 8a21b0cd deny
 
 ### Questions
 
-For one field, use the code followed by your answer:
+For one field, use the code followed by your answer. Questions with choices show
+numbered options, so you can reply with the option number:
 
 ```text
-8a21b0cd PostgreSQL
+8a21b0cd 1
 ```
 
-Use the displayed **option value**, rather than its label, for choices. For
-multi-select fields, separate values with commas. Boolean fields accept
-`yes`/`no` or `true`/`false`. For multiple fields, send a JSON object:
+You can also reply with the displayed option label or its underlying value. For
+multi-select fields, separate option numbers or labels with commas. Boolean
+fields accept `yes`/`no` or `true`/`false`. For multiple fields, send a JSON
+object using the displayed field keys:
 
 ```text
 8a21b0cd {"database":"pg","replicas":2}
