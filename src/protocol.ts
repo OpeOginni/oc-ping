@@ -62,17 +62,12 @@ export function describeForm(form: FormInfo): string {
   return [form.title.trim(), ...fields].filter(Boolean).join('\n\n')
 }
 
-export function questionReplyHint(form: FormInfo, code: string): string {
-  if (form.fields.length > 1) return `Reply: ${code} {"fieldKey":"answer"}\nCancel: ${code} /cancel`
+export function questionReplyHint(form: FormInfo): string {
+  if (form.fields.length > 1) return `Reply to this message with {"fieldKey":"answer"}\nCancel: reply with /cancel`
   const field = form.fields[0]
   if ('options' in field && field.options?.length) {
     const example = field.type === 'multiselect' ? '1,3' : '1'
-    return `Reply: ${code} ${example}\nCancel: ${code} /cancel`
+    return `Reply to this message with ${example}\nCancel: reply with /cancel`
   }
-  return `Reply: ${code} <answer>\nCancel: ${code} /cancel`
-}
-
-export function parseReply(text: string) {
-  const match = /^([a-f0-9]{8})\s+([\s\S]+)$/i.exec(text.trim())
-  return match ? { code: match[1].toLowerCase(), text: match[2] } : undefined
+  return `Reply to this message with your answer\nCancel: reply with /cancel`
 }

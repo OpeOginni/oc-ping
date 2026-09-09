@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { FormInfo } from '@opencode/client'
-import { describeForm, formAnswer, parseReply, permissionReply, questionReplyHint } from '../src/protocol.js'
+import { describeForm, formAnswer, permissionReply, questionReplyHint } from '../src/protocol.js'
 
 const form = (fields: FormInfo['fields']): FormInfo => ({ id: 'frm_test', sessionID: 'ses_test', title: 'Choose a database', fields })
 
@@ -10,13 +10,6 @@ test('permission replies require an explicit supported decision', () => {
   assert.equal(permissionReply('always'), 'always')
   assert.equal(permissionReply('deny'), 'reject')
   for (const input of ['yes', 'allow everything', '', 'probably', 'allow\ndeny']) assert.throws(() => permissionReply(input))
-})
-
-test('request codes prevent unrelated text from being interpreted as approvals', () => {
-  assert.equal(parseReply('allow'), undefined)
-  assert.equal(parseReply('hello deadbeef allow'), undefined)
-  assert.deepEqual(parseReply('DEADBEEF allow'), { code: 'deadbeef', text: 'allow' })
-  assert.deepEqual(parseReply('deadbeef first\nsecond'), { code: 'deadbeef', text: 'first\nsecond' })
 })
 
 test('text, boolean and numeric questions retain native form types', () => {
@@ -46,7 +39,7 @@ test('question text includes actual option values for valid replies', () => {
   const text = describeForm(f)
   assert.doesNotMatch(text, /db \(string\)/)
   assert.match(text, /Database\nPick one\n1\. PostgreSQL/)
-  assert.equal(questionReplyHint(f, 'deadbeef'), 'Reply: deadbeef 1\nCancel: deadbeef /cancel')
+  assert.equal(questionReplyHint(f), 'Reply to this message with 1\nCancel: reply with /cancel')
   assert.deepEqual(formAnswer(f, '1'), { db: 'pg' })
   assert.deepEqual(formAnswer(f, 'PostgreSQL'), { db: 'pg' })
 })

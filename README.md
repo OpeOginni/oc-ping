@@ -80,8 +80,8 @@ On Free and Pro shared-line plans, add your recipient under the Photon project's
 | Selection | Behavior |
 | --- | --- |
 | `result` | Successful session completion with the last assistant's text result |
-| `permission` | Action, resources, reason, and a reply code |
-| `question` | V2 form title, fields, choices, and a reply code |
+| `permission` | Action, resources, reason, and native iMessage reply support |
+| `question` | V2 form title, fields, choices, and native iMessage reply support |
 | Any exact V2 public event name | A generic notification containing the event name and session ID when present |
 
 Examples of exact names: `session.idle`, `permission.asked`, `form.created`.
@@ -102,7 +102,8 @@ Updated the checkout flow.
 ```
 
 Leading and trailing whitespace is trimmed. Omit `deviceName` to send messages
-without a device label. The label is for display; request codes still route replies.
+without a device label. The label is for display; native reply threading routes
+responses.
 
 ### Permissions
 
@@ -111,19 +112,21 @@ without a device label. The label is for display; request codes still route repl
 shell
 npm install
 
-Reply: 8a21b0cd allow | 8a21b0cd always | 8a21b0cd deny
+Reply to this message with allow, always, or deny.
 ```
 
 `allow` approves once. `always` uses OpenCode's saved-permission behavior.
-`deny` rejects. A bare `yes` or `allow` without the code does not approve anything.
+`deny` rejects. Use iMessage's native **Reply** action on the notification so the
+plugin can associate your response with the correct OpenCode request. Unthreaded
+messages are ignored and cannot approve anything.
 
 ### Questions
 
-For one field, use the code followed by your answer. Questions with choices show
-numbered options, so you can reply with the option number:
+Questions with choices show numbered options. Use iMessage's native **Reply**
+action and send the option number:
 
 ```text
-8a21b0cd 1
+1
 ```
 
 You can also reply with the displayed option label or its underlying value. For
@@ -132,15 +135,16 @@ fields accept `yes`/`no` or `true`/`false`. For multiple fields, send a JSON
 object using the displayed field keys:
 
 ```text
-8a21b0cd {"database":"pg","replicas":2}
+{"database":"pg","replicas":2}
 ```
 
-Cancel a question with `8a21b0cd /cancel`. External/browser-only fields must be
-completed in OpenCode. OpenCode validates field constraints and conditional
-requirements before accepting the answer.
+Use iMessage's native **Reply** action on the question notification. Cancel a
+question by replying with `/cancel`. External/browser-only fields must be completed
+in OpenCode. OpenCode validates field constraints and conditional requirements
+before accepting the answer.
 
 Replies are accepted only from the configured recipient in the matching direct
-conversation and sender line. Codes expire after 24 hours. Requests and
+conversation and sender line. Reply mappings expire after 24 hours. Requests and
 deduplication markers use OpenCode's durable plugin storage; pending state is
 checked against OpenCode before applying a reply. Replies never become arbitrary
 agent prompts.
@@ -174,8 +178,9 @@ Photon `spectrum-ts` **12.8.0**. These are pinned because the V2 API is beta.
 This is an MVP, with type checking and reply-protocol tests. Live Photon delivery
 and OpenCode round-trip verification require your configured running service and
 Photon credentials. To verify, run a session to completion, trigger an `ask`
-permission and a question, then reply using each generated code. Also try resolving
-a request in OpenCode before replying to its message.
+permission and a question, then use iMessage's native **Reply** action on each
+notification. Also try resolving a request in OpenCode before replying to its
+message.
 
 Current operational limits:
 

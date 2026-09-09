@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Plugin } from '@opencode/plugin'
@@ -6,7 +5,7 @@ import { OpenCode, type OpenCodeEvent, type FormInfo } from '@opencode/client'
 import { Service } from '@opencode/client/service'
 import { Spectrum } from 'spectrum-ts'
 import { imessage } from 'spectrum-ts/providers/imessage'
-import { describeForm, formAnswer, parseReply, permissionReply, questionReplyHint } from './protocol.js'
+import { describeForm, formAnswer, permissionReply, questionReplyHint } from './protocol.js'
 
 type Pending = { kind: 'permission' | 'question'; sessionID: string; requestID: string; expires: number; recipient: string }
 const defaults = ['result', 'permission', 'question']
@@ -47,7 +46,12 @@ export default Plugin.define({
     const send = async (text: string) => {
       // Preserve instructions at the end of long requests by splitting, not truncating.
       const chars = Array.from(deviceName ? `[${deviceName}] ${text}` : text)
-      for (let start = 0; start < chars.length; start += 3000) await dm.send(chars.slice(start, start + 3000).join(''))
+      const ids: string[] = []
+      for (let start = 0; start < chars.length; start += 3000) {
+        const message = await dm.send(chars.slice(start, start + 3000).join(''))
+        if (message) ids.push(message.id)
+      }
+      return ids
     }
     const scoped = async (sessionID: string) => {
       const session = await ctx.session.get({ sessionID })
@@ -74,13 +78,13 @@ export default Plugin.define({
     const notifyRequest = async (kind: Pending['kind'], sessionID: string, requestID: string, body: string, replyHint?: string) => {
       const marker = `request/${requestID}`
       if (await ctx.storage.get(marker)) return
-      const code = randomBytes(4).toString('hex')
       const pending: Pending = { kind, sessionID, requestID, expires: Date.now() + 24 * 60 * 60 * 1000, recipient }
-      await ctx.storage.set(`pending/${code}`, pending)
       const instructions = !replies ? 'Respond in OpenCode.' : kind === 'permission'
-        ? `Reply: ${code} allow | ${code} always | ${code} deny\n(always saves approval according to OpenCode rules.)`
-        : replyHint?.replaceAll('{code}', code) ?? `Reply: ${code} <answer>\nCancel: ${code} /cancel`
-      await send(`${body}\n\n${instructions}`)
+        ? 'Reply to this message with allow, always, or deny.\n(always saves approval according to OpenCode rules.)'
+        : replyHint ?? 'Reply to this message with your answer.\nCancel: reply with /cancel'
+      const outboundIDs = await send(`${body}\n\n${instructions}`)
+      if (replies && outboundIDs.length === 0) throw new Error('Photon did not return an outbound message ID for reply routing.')
+      for (const messageID of outboundIDs) await ctx.storage.set(`outbound/${messageID}`, pending)
       await ctx.storage.set(marker, true)
     }
     const onEvent = async (event: OpenCodeEvent) => {
@@ -99,7 +103,7 @@ export default Plugin.define({
         await notifyRequest('permission', r.sessionID, r.id, `[${title}] Permission needed\n${r.action}\n${r.resources.join('\n')}${r.message ? `\n${r.message}` : ''}`)
       } else if (event.type === 'form.created') {
         const f = event.data.form
-        await notifyRequest('question', f.sessionID, f.id, `OpenCode question\nSession: ${title}\n\n${describeForm(f)}`, questionReplyHint(f as FormInfo, '{code}'))
+        await notifyRequest('question', f.sessionID, f.id, `OpenCode question\nSession: ${title}\n\n${describeForm(f)}`, questionReplyHint(f as FormInfo))
       } else if (event.type === 'session.idle' && session && events.has('result')) {
         if (session.outcome !== 'succeeded') return
         const messages = await ctx.session.context({ sessionID: session.id })
@@ -115,22 +119,20 @@ export default Plugin.define({
         await ctx.storage.set(`event/${event.id}`, true)
       }
     }
-    const onReply = async (id: string, text: string) => {
-      const parsed = parseReply(text)
-      if (!parsed) return // Ignore unrelated chat and replies for other instances.
-      const value = await ctx.storage.get(`pending/${parsed.code}`)
+    const onReply = async (id: string, targetID: string, text: string, respond: (text: string) => Promise<unknown>) => {
+      const value = await ctx.storage.get(`outbound/${targetID}`)
       if (!value || typeof value !== 'object' || Array.isArray(value)) return
       const pending = value as Pending
       if (pending.recipient !== recipient || await ctx.storage.get(`inbound/${id}`)) return
       if (pending.expires < Date.now()) {
-        await ctx.storage.remove(`pending/${parsed.code}`)
-        await send(`[${parsed.code}] Request expired; respond in OpenCode.`)
+        await ctx.storage.remove(`outbound/${targetID}`)
+        await respond('This request expired; respond in OpenCode.')
         return
       }
       if (!await scoped(pending.sessionID)) return
       try {
         if (pending.kind === 'permission') {
-          const reply = permissionReply(parsed.text)
+          const reply = permissionReply(text)
           await ctx.permission.get({ sessionID: pending.sessionID, requestID: pending.requestID })
           await ctx.permission.reply({ sessionID: pending.sessionID, requestID: pending.requestID, reply })
         } else {
@@ -138,21 +140,21 @@ export default Plugin.define({
           const input = { sessionID: pending.sessionID, formID: pending.requestID }
           const state = await api.state(input)
           if (state.status !== 'pending') {
-            await ctx.storage.remove(`pending/${parsed.code}`)
-            await send(`[${parsed.code}] This question has already been resolved.`)
+            await ctx.storage.remove(`outbound/${targetID}`)
+            await respond('This question has already been resolved.')
             return
           }
           const current = await api.get(input)
-          if (parsed.text.trim() === '/cancel') await api.cancel(input)
-          else await api.reply({ ...input, answer: formAnswer(current as FormInfo, parsed.text) })
+          if (text.trim() === '/cancel') await api.cancel(input)
+          else await api.reply({ ...input, answer: formAnswer(current as FormInfo, text) })
         }
       } catch {
-        await send(`[${parsed.code}] Could not apply reply. Check the answer format and whether the request is still pending in OpenCode.`)
+        await respond('Could not apply reply. Check the answer format and whether the request is still pending in OpenCode.')
         return
       }
       await ctx.storage.set(`inbound/${id}`, true)
-      await ctx.storage.remove(`pending/${parsed.code}`)
-      await send(`[${parsed.code}] Reply applied.`)
+      await ctx.storage.remove(`outbound/${targetID}`)
+      await respond('Reply applied.')
     }
     // Consume the server stream promptly; isolate network work on a serial queue.
     let queue = Promise.resolve()
@@ -171,10 +173,11 @@ export default Plugin.define({
       if (!replies) return
       try {
         for await (const [space, message] of app.messages) {
-          if (message.platform !== 'imessage' || message.direction !== 'inbound' || message.content.type !== 'text') continue
+          if (message.platform !== 'imessage' || message.direction !== 'inbound' || message.content.type !== 'reply' || message.content.content.type !== 'text') continue
           if (message.sender?.id !== user.id || space.id !== dm.id || imessage(space).type !== 'dm' || imessage(space).phone !== imessage(dm).phone) continue
-          const text = message.content.text
-          enqueue(() => onReply(message.id, text))
+          const { text } = message.content.content
+          const targetID = message.content.target.id
+          enqueue(() => onReply(message.id, targetID, text, reply => message.reply(reply)))
         }
       } catch { if (!controller.signal.aborted) log('Photon receive stream stopped; reload the plugin to reconnect.') }
     })()
