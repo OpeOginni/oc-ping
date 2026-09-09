@@ -10,7 +10,8 @@ import { describeForm, formAnswer, parseReply, permissionReply } from './protoco
 
 type Pending = { kind: 'permission' | 'question'; sessionID: string; requestID: string; expires: number; recipient: string }
 const defaults = ['result', 'permission', 'question']
-const log = (message: string) => console.error(`[oc-ping] ${message}`)
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+const log = (message: string, error?: unknown) => console.error(`[oc-ping] ${message}${error === undefined ? '' : `: ${errorMessage(error)}`}`)
 
 export default Plugin.define({
   id: 'oc-ping',
@@ -156,7 +157,7 @@ export default Plugin.define({
     // Consume the server stream promptly; isolate network work on a serial queue.
     let queue = Promise.resolve()
     const enqueue = (work: () => Promise<void>) => {
-      queue = queue.then(async () => { if (!controller.signal.aborted) await work() }).catch(() => log('Notification/reply failed; check connectivity and credentials.'))
+      queue = queue.then(async () => { if (!controller.signal.aborted) await work() }).catch(error => log('Notification/reply failed', error))
     }
     const outgoing = (async () => {
       while (!controller.signal.aborted) {

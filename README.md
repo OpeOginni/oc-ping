@@ -60,12 +60,14 @@ and questions. Bring your own Photon credentials.
    variables whenever possible. If credentials are ever committed or shared,
    rotate the Photon secret immediately.
 
-Use an iMessage-capable phone number or email. The plugin registers only Photon's
-cloud iMessage provider. Photon manages the sending number; it is not your
-personal Messages account. Its Free/Pro plans use shared numbers, while Business
-supports dedicated lines. Photon documents SMS/RCS fallback at the platform
-level; the plugin rejects recipients explicitly reported as SMS/RCS but does not
-override Photon transport fallback policy.
+Use **your own receiving iMessage phone number or Apple ID email** as
+`recipient`. Do not use the shared or dedicated sending line Photon assigned to
+the project; Photon rejects managed lines as recipients. The plugin registers
+only Photon's cloud iMessage provider. Photon manages the sending number; it is
+not your personal Messages account. Its Free/Pro plans use shared numbers, while
+Business supports dedicated lines. Photon documents SMS/RCS fallback at the
+platform level; the plugin rejects recipients explicitly reported as SMS/RCS but
+does not override Photon transport fallback policy.
 
 Photon receives replies over the SDK's outbound gRPC connection. No public
 webhook or tunnel is needed. The machine running OpenCode must stay online.
