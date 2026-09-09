@@ -8,7 +8,9 @@ and questions. Bring your own Photon credentials.
 
 1. Create a project in the [Photon dashboard](https://app.photon.codes/).
    Its Settings page contains your project ID and secret.
-2. Make these environment variables available to the **OpenCode server process**:
+2. Make these environment variables available to the **OpenCode server process**.
+   This is the recommended approach because credentials will not be stored in
+   `opencode.jsonc` or accidentally committed to a public repository:
 
    ```sh
    export SPECTRUM_PROJECT_ID="your-project-id"
@@ -39,19 +41,24 @@ and questions. Bring your own Photon credentials.
    }
    ```
 
-   For local testing from this repository, copy the example and set `recipient`,
-   `projectId`, and `projectSecret` directly in `opencode.jsonc`, then start
-   OpenCode here:
+   For local testing from this repository, copy the example, set `OC_PING_RECIPIENT`
+   and the Photon environment variables above, then start OpenCode here:
 
    ```sh
    opencode
    ```
 
-   The example config loads `.` as the plugin package. It enables
-   result, permission, and question notifications with replies. Its empty
-   credential fields fall back to `OC_PING_RECIPIENT`, `SPECTRUM_PROJECT_ID`, and
-   `SPECTRUM_PROJECT_SECRET` when set. You can also edit the event selection or
-   add `deviceName` there. Do not commit real credentials.
+   The example config loads `.` as the plugin package. It enables result,
+   permission, and question notifications with replies. Empty option fields fall
+   back to `OC_PING_RECIPIENT`, `SPECTRUM_PROJECT_ID`, and
+   `SPECTRUM_PROJECT_SECRET` when set. You can edit the event selection or add
+   `deviceName` there.
+
+   You can put `recipient`, `projectId`, and `projectSecret` directly in the
+   plugin options for a local-only setup, but **never publish or commit that
+   configuration publicly**. Keep `opencode.jsonc` gitignored and use environment
+   variables whenever possible. If credentials are ever committed or shared,
+   rotate the Photon secret immediately.
 
 Use an iMessage-capable phone number or email. The plugin registers only Photon's
 cloud iMessage provider. Photon manages the sending number; it is not your
