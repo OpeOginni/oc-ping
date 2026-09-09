@@ -20,16 +20,16 @@ and questions. Bring your own Photon credentials.
    An already-running background service will not inherit newly exported shell
    variables. Configure its launch environment and restart it as needed.
 3. Install the dependencies in this directory with `npm install`.
-4. Add the plugin to your OpenCode configuration, using an absolute path to this
-   directory (copy `opencode.example.jsonc` to `opencode.jsonc` for local
-   testing; the local file is intentionally gitignored):
+4. Add the published plugin to your OpenCode configuration (copy
+   `opencode.example.jsonc` to `opencode.jsonc` for local testing; the local file
+   is intentionally gitignored):
 
    ```jsonc
    {
      "$schema": "https://opencode.ai/config.json",
      "plugins": [
        {
-         "package": "/absolute/path/to/oc-ping",
+          "package": "oc-ping",
          "options": {
             "recipient": "+15551234567",
             "deviceName": "Work MacBook",
