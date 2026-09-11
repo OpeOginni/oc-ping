@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": "./dist",
+      "options": {
+        // Set OC_PING_RECIPIENT, SPECTRUM_PROJECT_ID, and SPECTRUM_PROJECT_SECRET
+        // in .env or the server environment. Keep them out of this config.
+        "deviceName": "Development Mac",
+        "events": ["result", "permission", "question"],
+        "requestDelayMinutes": 3,
+        "completionMinMinutes": 30,
+        "awayKeybind": "<leader>p",
+        "replies": true
+      }
+    }
+  ]
+}

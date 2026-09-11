@@ -1,0 +1,63 @@
+{
+  "name": "oc-ping",
+  "version": "0.0.2",
+  "description": "OpenCode V2 iMessage notifications and permission/question replies powered by Photon.",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "imessage",
+    "photon",
+    "notifications"
+  ],
+  "author": "Ope Oginni",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpeOginni/oc-plugins.git",
+    "directory": "packages/oc-ping"
+  },
+  "homepage": "https://github.com/OpeOginni/oc-plugins/tree/main/packages/oc-ping#readme",
+  "bugs": {
+    "url": "https://github.com/OpeOginni/oc-plugins/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./tui": "./dist/tui.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "bun run build",
+    "check": "tsc --noEmit",
+    "test": "bun test test/*.test.ts",
+    "prepublishOnly": "bun run check && bun test",
+    "publish:dry-run": "bun publish --dry-run",
+    "release": "bun publish"
+  },
+  "dependencies": {
+    "@opencode/client": "0.0.0-beta-19378",
+    "@opencode/plugin": "0.0.0-beta-19378",
+    "spectrum-ts": "12.8.0"
+  },
+  "peerDependencies": {
+    "@opentui/core": ">=0.5.10",
+    "@opentui/solid": ">=0.5.10",
+    "solid-js": ">=1.9.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "@types/node": "^22",
+    "babel-preset-solid": "^1.9.12",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.0"
+  }
+}

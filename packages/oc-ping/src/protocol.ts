@@ -10,33 +10,40 @@ export function permissionReply(text: string): 'once' | 'always' | 'reject' {
 }
 
 export function formAnswer(form: FormInfo, text: string): FormAnswer {
-  // JSON supports multi-field and conditional forms without guessing field order.
-  if (text.trim().startsWith('{')) {
-    const answer: unknown = JSON.parse(text)
-    if (!answer || typeof answer !== 'object' || Array.isArray(answer)) throw new Error('Expected a JSON object.')
-    const result: FormAnswer = {}
-    for (const [key, value] of Object.entries(answer)) {
-      if (!form.fields.some(f => f.key === key && f.type !== 'external')) throw new Error(`Unknown field: ${key}`)
-      if (!(typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)) || (Array.isArray(value) && value.every(v => typeof v === 'string')))) throw new Error(`Invalid value for ${key}`)
-      result[key] = value
-    }
-    return result
+  if (form.fields.some(field => field.type === 'external')) throw new Error('Complete this question in OpenCode.')
+  if (form.fields.length === 1) {
+    const field = form.fields[0]
+    return { [field.key]: fieldAnswer(field, text) }
   }
-  if (form.fields.length !== 1) throw new Error('Reply with a JSON object using the field keys shown.')
-  const field = form.fields[0]
+  const lines = text.trim().replace(/\r/g, '').split('\n')
+  if (lines.length !== form.fields.length) throw new Error(`Reply with ${form.fields.length} answers, one per line.`)
+  const result: FormAnswer = {}
+  form.fields.forEach((field, index) => {
+    if (field.type === 'external') throw new Error('Complete this question in OpenCode.')
+    const answer = lines[index].trim()
+    if (answer === '-') {
+      if (field.required) throw new Error(`${field.title ?? field.key} is required.`)
+      return
+    }
+    result[field.key] = fieldAnswer(field, answer)
+  })
+  return result
+}
+
+function fieldAnswer(field: FormInfo['fields'][number], text: string): FormAnswer[string] {
   switch (field.type) {
     case 'external': throw new Error('Complete this question in OpenCode.')
     case 'boolean': {
       if (!/^(true|false|yes|no)$/i.test(text.trim())) throw new Error('Reply yes or no.')
-      return { [field.key]: /^(true|yes)$/i.test(text.trim()) }
+      return /^(true|yes)$/i.test(text.trim())
     }
     case 'number': case 'integer': {
       const value = Number(text)
       if (!text.trim() || !Number.isFinite(value) || (field.type === 'integer' && !Number.isInteger(value))) throw new Error('Reply with a valid number.')
-      return { [field.key]: value }
+      return value
     }
-    case 'multiselect': return { [field.key]: text.split(',').map(v => optionValue(field.options, v.trim())).filter(Boolean) }
-    case 'string': return { [field.key]: field.options?.length ? optionValue(field.options, text.trim()) : text }
+    case 'multiselect': return text.split(',').map(v => optionValue(field.options, v.trim())).filter(Boolean)
+    case 'string': return field.options?.length ? optionValue(field.options, text.trim()) : text
   }
 }
 
@@ -52,7 +59,7 @@ export function describeForm(form: FormInfo): string {
   const multiple = form.fields.length > 1
   const fields = form.fields.map((field, fieldIndex) => {
     const heading = field.title?.trim() || (multiple ? field.key : '')
-    const lines = [multiple ? `${fieldIndex + 1}. ${heading} [${field.key}]` : heading, field.description?.trim()]
+    const lines = [multiple ? `${fieldIndex + 1}. ${heading}` : heading, field.description?.trim()]
       .filter((line): line is string => Boolean(line))
     if ('options' in field && field.options?.length) {
       lines.push(...field.options.map((option, optionIndex) => `${optionIndex + 1}. ${option.label}${option.description ? ` — ${option.description}` : ''}`))
@@ -63,7 +70,8 @@ export function describeForm(form: FormInfo): string {
 }
 
 export function questionReplyHint(form: FormInfo): string {
-  if (form.fields.length > 1) return `Reply to this message with {"fieldKey":"answer"}\nCancel: reply with /cancel`
+  if (form.fields.some(field => field.type === 'external')) return 'Complete this question in OpenCode\nCancel: reply with /cancel'
+  if (form.fields.length > 1) return `Reply with ${form.fields.length} answers, one per line\nUse - to skip an optional question\nCancel: reply with /cancel`
   const field = form.fields[0]
   if ('options' in field && field.options?.length) {
     const example = field.type === 'multiselect' ? '1,3' : '1'

@@ -6,6 +6,9 @@ import { Service } from '@opencode/client/service'
 import { Spectrum } from 'spectrum-ts'
 import { imessage } from 'spectrum-ts/providers/imessage'
 import { describeForm, formAnswer, permissionReply, questionReplyHint } from './protocol.js'
+import { completionDue, settingsFrom } from './policy.js'
+import { Ping } from './rpc.js'
+import { requestQueue } from './requests.js'
 
 type Pending = { kind: 'permission' | 'question'; sessionID: string; requestID: string; expires: number; recipient: string }
 const defaults = ['result', 'permission', 'question']
@@ -15,9 +18,13 @@ const log = (message: string, error?: unknown) => console.error(`[oc-ping] ${mes
 export default Plugin.define({
   id: 'oc-ping',
   async setup(ctx) {
+    const configuredSettings = settingsFrom(ctx.options)
+    const locationKey = encodeURIComponent(JSON.stringify([resolve(ctx.location.directory), ctx.location.workspaceID ?? null]))
+    const settingsKey = `settings/${locationKey}`
+    let settings = settingsFrom(await ctx.storage.get(settingsKey) ?? {}, configuredSettings)
     const configured = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : undefined
     const recipient = configured(ctx.options.recipient) ?? configured(process.env.OC_PING_RECIPIENT)
-    if (typeof recipient !== 'string' || !recipient.trim()) throw new Error('oc-ping: options.recipient is required.')
+    if (typeof recipient !== 'string' || !recipient.trim()) throw new Error('oc-ping: set OC_PING_RECIPIENT in .env or the server environment.')
     if (ctx.options.deviceName !== undefined && (typeof ctx.options.deviceName !== 'string' || !ctx.options.deviceName.trim())) throw new Error('oc-ping: options.deviceName must be a non-empty string.')
     const deviceName = typeof ctx.options.deviceName === 'string' ? ctx.options.deviceName.trim() : undefined
     const selected = ctx.options.events ?? defaults
@@ -27,7 +34,7 @@ export default Plugin.define({
     const controller = new AbortController()
     const projectId = configured(ctx.options.projectId) ?? configured(process.env.SPECTRUM_PROJECT_ID)
     const projectSecret = configured(ctx.options.projectSecret) ?? configured(process.env.SPECTRUM_PROJECT_SECRET)
-    if ((projectId && !projectSecret) || (!projectId && projectSecret)) throw new Error('oc-ping: projectId and projectSecret must be configured together.')
+    if ((projectId && !projectSecret) || (!projectId && projectSecret)) throw new Error('oc-ping: set SPECTRUM_PROJECT_ID and SPECTRUM_PROJECT_SECRET together in .env or the server environment.')
     const app = projectId && projectSecret
       ? await Spectrum({ projectId, projectSecret, providers: [imessage.config()], options: { logLevel: 'error' } })
       : await Spectrum({ providers: [imessage.config()], options: { logLevel: 'error' } })
@@ -87,10 +94,33 @@ export default Plugin.define({
       for (const messageID of outboundIDs) await ctx.storage.set(`outbound/${messageID}`, pending)
       await ctx.storage.set(marker, true)
     }
+    const requests = requestQueue({
+      storage: ctx.storage,
+      prefix: `waiting/${locationKey}/`,
+      settings: () => settings,
+      enabled: kind => kind === 'permission' ? events.has('permission') || events.has('permission.asked') : events.has('question') || events.has('form.created'),
+      pending: async item => {
+        if (!await scoped(item.sessionID)) return false
+        return item.kind === 'permission'
+          ? (await ctx.permission.list({ sessionID: item.sessionID })).some(r => r.id === item.requestID)
+          : (await (await forms(item.sessionID)).state({ sessionID: item.sessionID, formID: item.requestID })).status === 'pending'
+      },
+      notify: item => notifyRequest(item.kind, item.sessionID, item.requestID, item.body, item.replyHint),
+      onError: error => log('Delayed request check failed', error),
+    })
     const onEvent = async (event: OpenCodeEvent) => {
       const data = event.data
       const sessionID = 'sessionID' in data && typeof data.sessionID === 'string' ? data.sessionID
         : event.type === 'form.created' ? event.data.form.sessionID : undefined
+      if (event.type === 'session.execution.started' && sessionID && await scoped(sessionID)) {
+        await ctx.storage.set(`started/${sessionID}`, event.created)
+      }
+      const started = event.type === 'session.idle' && sessionID ? await ctx.storage.get(`started/${sessionID}`) : undefined
+      if (sessionID && (event.type === 'session.idle' || event.type === 'session.execution.failed' || event.type === 'session.execution.interrupted')) {
+        await ctx.storage.remove(`started/${sessionID}`)
+      }
+      if (event.type === 'permission.replied') await requests.cancel(event.data.requestID)
+      if (event.type === 'form.replied' || event.type === 'form.cancelled') await requests.cancel(event.data.id)
       const selectedRaw = events.has(event.type)
       const selectedDefault = (event.type === 'session.idle' && events.has('result')) || (event.type === 'permission.asked' && events.has('permission')) || (event.type === 'form.created' && events.has('question'))
       if (!selectedRaw && !selectedDefault) return
@@ -100,15 +130,18 @@ export default Plugin.define({
       const title = session?.title ?? ctx.location.directory
       if (event.type === 'permission.asked') {
         const r = event.data
-        await notifyRequest('permission', r.sessionID, r.id, `[${title}] Permission needed\n${r.action}\n${r.resources.join('\n')}${r.message ? `\n${r.message}` : ''}`)
+        await requests.add({ kind: 'permission', sessionID: r.sessionID, requestID: r.id, created: event.created, body: `[${title}] Permission needed\n${r.action}\n${r.resources.join('\n')}${r.message ? `\n${r.message}` : ''}` })
+        await requests.flush()
       } else if (event.type === 'form.created') {
         const f = event.data.form
-        await notifyRequest('question', f.sessionID, f.id, `OpenCode question\nSession: ${title}\n\n${describeForm(f)}`, questionReplyHint(f as FormInfo))
-      } else if (event.type === 'session.idle' && session && events.has('result')) {
+        await requests.add({ kind: 'question', sessionID: f.sessionID, requestID: f.id, created: event.created, body: `OpenCode question\nSession: ${title}\n\n${describeForm(f)}`, replyHint: questionReplyHint(f as FormInfo) })
+        await requests.flush()
+      } else if (event.type === 'session.idle' && session) {
         if (session.outcome !== 'succeeded') return
         const messages = await ctx.session.context({ sessionID: session.id })
         const last = [...messages].reverse().find(m => m.type === 'assistant')
         if (!last || last.type !== 'assistant' || last.error || !last.time.completed) return
+        if (!completionDue(settings, typeof started === 'number' ? started : undefined, last.time.completed)) return
         const text = last.content.filter(p => p.type === 'text').map(p => p.text).join('\n').trim()
         if (!text || await ctx.storage.get(`result/${last.id}`)) return
         await send(`[${title}] Done\n${text}`)
@@ -158,9 +191,35 @@ export default Plugin.define({
     }
     // Consume the server stream promptly; isolate network work on a serial queue.
     let queue = Promise.resolve()
-    const enqueue = (work: () => Promise<void>) => {
-      queue = queue.then(async () => { if (!controller.signal.aborted) await work() }).catch(error => log('Notification/reply failed', error))
+    const serialize = <T,>(work: () => Promise<T>): Promise<T> => {
+      const result = queue.then(() => {
+        if (controller.signal.aborted) throw new Error('oc-ping is shutting down.')
+        return work()
+      })
+      queue = result.then(() => {}, () => {})
+      return result
     }
+    const enqueue = (work: () => Promise<void>) => { void serialize(work).catch(error => { if (!controller.signal.aborted) log('Notification/reply failed', error) }) }
+    // Serialize settings mutations with notifications and replies, including toggles from multiple TUIs.
+    const changeSettings = (input?: unknown) => serialize(async () => {
+      const next = settingsFrom(input ?? { away: !settings.away }, settings)
+      await ctx.storage.set(settingsKey, next)
+      settings = next
+      enqueue(requests.flush)
+      return { ...settings }
+    })
+    const rpc = await ctx.rpc.register(Ping, {
+      get: () => serialize(async () => ({ ...settings })),
+      update: input => changeSettings(input),
+      toggle: () => changeSettings(),
+    })
+    let ticking = false
+    const timer = setInterval(() => {
+      if (ticking) return
+      ticking = true
+      enqueue(async () => { try { await requests.flush() } finally { ticking = false } })
+    }, 1000)
+    enqueue(requests.flush)
     const outgoing = (async () => {
       while (!controller.signal.aborted) {
         try {
@@ -183,6 +242,8 @@ export default Plugin.define({
     })()
     return async () => {
       controller.abort()
+      clearInterval(timer)
+      await rpc.dispose()
       await app.stop()
       await Promise.allSettled([outgoing, incoming, queue])
     }
